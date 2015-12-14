@@ -1,0 +1,182 @@
+---
+title: "Assignment 1"
+output: html_document
+---
+
+```{r global_options, echo= F}
+
+knitr::opts_chunk$set(fig.width = 10, fig.height=4, warning=FALSE, message= FALSE)
+
+```
+
+
+**Loading and preprocessing the data.**
+
+```{r downloading_extracting}
+setwd("~/R/RepRes")
+url <- "http://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip"
+file.create("data.zip")
+setInternet2(use = TRUE)
+download.file(url, destfile= "data.zip", mode="wb")
+unzip("data.zip")
+
+data <- read.csv("~\\R\\RepRes\\activity.csv", header = T)
+data$date <- as.POSIXct(data$date)
+data <- data[which(data[,1] != "NA"),]
+print(str(data))
+```
+
+**Mean total number of steps taken per day**
+
+Next, got data into the workspace, and coverted with dplyr in order to get the total amount of steps for each day resgitered. 
+This table will be the input for the histogram below the code.
+
+```{r with_dplyr}
+
+library(dplyr)
+
+steps <- data%>%
+            filter(!is.na(steps))%>%      
+            group_by(date)%>%
+                  summarize(steps = sum(steps))%>%
+      print()      
+
+```
+
+Histogram.
+
+```{r Histogram1}
+
+library(ggplot2)
+H <- ggplot(steps, aes(x=steps))
+H <- H+geom_histogram(binwidth = 2000, colour = "white", fill = "black")
+H <- H+geom_vline(aes(xintercept=mean(steps)), colour = "darkgreen", linetype = "dashed", size = 1)+labs(title="Total Steps per Day")
+H
+
+```
+
+Next, a straigth forward calculation of dispersion means.
+
+```{r dispersion_means}
+
+stepsAvg <- mean(steps$steps)
+stepsMedian <- median(steps$steps)
+
+data.frame(stepsAvg, stepsMedian)
+
+```
+
+**Average daily activity pattern**
+
+Using dplyr again, reorganized the data to obtain the mean of steps on each interval of five minutes, ignoring the NAs.
+
+```{r average_daily}
+
+interval <- data%>%
+            filter(!is.na(steps))%>%
+            group_by(interval)%>%
+            summarize(steps = mean(steps))%>%
+      print()
+
+interval[which.max(interval$steps),]
+
+```
+
+```{r timeline}
+
+TL <- qplot(interval, steps, data= interval, geom = "line")
+TL <- TL + geom_line(colour = "darkgreen")
+TL+labs(title="Average steps per interval")
+
+```
+
+**Input missing values**
+
+With the funtion table() we can know how many NAs there are in the data set.
+Then, figuring out the indexes or positions for every NA value, we can use a loop or an apply funtion to replace eache value for the mean of the group for each interval. 
+
+Afterwards, with dplyr grouped by date for calculating the total amount of steps each day, including the new observations corresponding to the former NAs to plot and compare with the data containing NAs from above. 
+
+```{r NAs}
+
+Nas <- table(is.na(data))[2]
+Nas
+
+clean <- data
+nas <- is.na(clean$steps)
+avges <- tapply(clean$steps, clean$interval, mean, na.rm=TRUE, simplify=TRUE)
+clean$steps[nas] <- avges[as.character(clean$interval[nas])]
+
+clean2 <- clean%>%
+            group_by(date)%>%
+            summarize(steps = sum(steps))%>%
+      print()      
+
+H2 <- ggplot(clean2, aes(x=steps))
+H2 <- H2+geom_histogram(binwidth = 1000, colour = "white", fill = "black")
+H2 <- H2+geom_vline(aes(xintercept=mean(steps)), colour = "darkgreen", linetype = "dashed", size = 1)
+H2 <- H2+geom_vline(aes(xintercept=median(steps)), colour = "darkblue", linetype = "dashed", size = 1)+labs(title="Total steps per day")
+H2
+
+```
+
+**Differences in activity patterns between weekdays and weekends.**
+
+According to the disperssion measures the median became equal as the mean, indicating a lesser disperssion on the new data. Nevertheless, the fact that means in both samples was the same, brings to mind the central limit theorem. Thus, and as the histrograms are pretty similar, the most likely would be getting a similar plot if we were to include observed data instead of NAs. 
+
+```{r dispersion_means2}
+
+stepsAvg2 <- mean(clean2$steps)
+stepsMedian2 <- median(clean2$steps)
+
+data.frame(stepsAvg, stepsAvg2, stepsMedian, stepsMedian2)
+
+```
+
+Next, using dplyr, we can add another column indicating whether the day is a weekday or a weekend. Thus, is possible to stablish differences between them.
+
+```{r weekdays_weekends}
+
+days <- clean%>%
+            mutate(Day = weekdays(clean$date))
+            
+
+weeknd <- c("sábado", "domingo")
+
+for(i in 1:length(days$Day)){ 
+      if(days$Day[i] %in% weeknd){days$Day[i] <- "weekend"}else{days$Day[i] <- "weekday"}
+     }
+      
+
+```
+
+Next, reordering the resultant data set to generate som plots representing the total amount of steps in weekdays and weekends per interval of five minutes. 
+
+```{r timelines2, fig.height=8}
+
+interval2 <- days%>%
+            group_by(interval, Day)%>%
+            summarise(steps = mean(steps))%>%
+      print()
+
+TL2 <- ggplot(interval2, aes(x=interval, y = steps, color = Day)) + geom_line() + facet_wrap(~Day, ncol = 1, nrow = 2)+labs(title="Avg steps per Interval")
+TL2
+
+TL2hor <- ggplot(interval2, aes(x=interval, y = steps, color = Day)) + geom_line() + facet_wrap(~Day, ncol = 2, nrow = 1)+labs(title="Avg steps per interval (horizontal")
+TL2hor
+
+```
+
+**Conclusion**
+
+At first glance, one can arrive to the conclusion that the number of steps whithin the intervals between 500 and 1000, is bigger than those in weekends. Nevertheless, the mean for weekends is larger than the former and, considering that only about 4 thousand records correspond to weekends, we could think now that the number of steps is larger on weekends. This could have somethig to do with some cultural factors that could determine the type of activities a person do in weekends or in weekdays. 
+
+```{r deeper_look}
+
+comparison <- days%>%
+            group_by(Day)%>%
+            summarise(steps = mean(steps))%>%
+      print()
+
+```
+
